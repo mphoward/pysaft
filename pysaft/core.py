@@ -2,10 +2,28 @@
 
 __all__ = ['FreeEnergy','Polymer']
 
+import numpy as np
+import numdifftools as nd
+
 class FreeEnergy:
-    """Free energy."""
-    def __init__(self):
-        pass
+    def __init__(self, terms=[]):
+        self.terms = []
+        # inject self-term into list if this is not the base class
+        if type(self) is not FreeEnergy:
+            self.terms.append(self)
+        # extend the list of terms if specified
+        try:
+            self.terms.extend(terms)
+        except TypeError:
+            self.terms.append(terms)
+
+    def __call__(self, n):
+        return np.sum([x.f(n) for x in self.terms])
+
+    def __add__(self, term):
+        if not isinstance(term, FreeEnergy):
+            raise TypeError('Can only add FreeEnergy terms together')
+        return FreeEnergy(self.terms + term.terms)
 
     def f(self, n):
         r"""Free-energy density (per kT).
@@ -14,16 +32,8 @@ class FreeEnergy:
             n (float or list): Number densities of each type.
 
         """
-        raise NotImplementedError("Free energy not defined")
+        raise NotImplementedError("Free energy density not implemented.")
 
-    def f_ex(self, n):
-        r"""Excess free-energy density (per kT).
-
-        Args:
-            n (float or list): Number densities of each type.
-
-        """
-        raise NotImplementedError("Excess free energy not defined")
 
     def z(self, n):
         r"""Compressibility factor.
@@ -40,30 +50,19 @@ class FreeEnergy:
 
         where *p* is the pressure and :math:`\rho = \sum n_i`.
 
-        The compressibility factor can also be computed from the density
+        The compressibility factor can also be computed from the volume
         derivative of the free energy.
 
         .. math::
 
-            Z = \rho \left( \frac{\partial (\beta f/\rho)}{\partial \rho} \right)_{N_i,T}
+            Z = -\rho^{-1} \left( \frac{\partial [\beta f(N_i/V) V]}{\partial V} \right)_{N_i,T}
 
         """
-        raise NotImplementedError("Compressibility factor not defined")
-
-    def z_ex(self, n):
-        r"""Excess compressibility factor.
-
-        Args:
-            n (float or list): Number densities of each type.
-
-        Excess is defined relative to the ideal gas at the same *n*.
-
-        .. math::
-
-            Z^{\rm ex} = Z - 1
-
-        """
-        raise NotImplementedError("Excess compressibility factor not defined")
+        # nominal basis for holding N constant in differentiation
+        V0 = 1.0
+        N0 = V0*np.atleast_1d(n).astype(np.float64)
+        dFdV = nd.Derivative(lambda V : V*self(N0/V), step=1.e-5)
+        return -dFdV(V0)/np.sum(n)
 
     def mu(self, n, i):
         r"""Chemical potential.
@@ -80,30 +79,13 @@ class FreeEnergy:
             \beta \mu_i = \left( \frac{\beta f}{n_i} \right)_{N_{j \ne i}, V,T}
 
         """
-        raise NotImplementedError("Chemical potential not defined")
-
-    def mu_ex(self, n, i):
-        r"""Excess chemical potential.
-
-        Args:
-            n (float or list): Number densities of each type.
-            i (int): Component to evaluate chemical potential for.
-
-        The excess chemical potential is defined relative to the ideal gas at
-        the same *n*.
-        """
-        raise NotImplementedError("Excess chemical potential not defined")
-
-    def G(self, n, i, j):
-        """Radial distribution function at contact.
-
-        Args:
-            n (float or list): Number densities of each type.
-            i (int): First component in pair.
-            j (int): Second component in pair.
-
-        """
-        raise NotImplementedError("Radial distribution function not defined")
+        # partial derivative with respect to n[i], all others held constant
+        def _f(x):
+            _n = np.copy(n).astype(np.float64)
+            _n[i] = x
+            return self(_n)
+        step = nd.MinStepGenerator(base_step=1.e-7, step_ratio=2, num_steps=4)
+        return nd.Derivative(_f, step=step)(n[i])
 
 class Polymer:
     """Polymer chain topology.
@@ -114,19 +96,26 @@ class Polymer:
 
     """
     def __init__(self, types, bonds):
-        self._types = types
-        self._bonds = bonds
-
-        self._type_counts = None
-        self._bond_counts = None
+        self.types = types
+        self.bonds = bonds
 
     @property
     def types(self):
         return self._types
 
+    @types.setter
+    def types(self, types):
+        self._types = types
+        self._type_counts = None
+
     @property
     def bonds(self):
         return self._bonds
+
+    @bonds.setter
+    def bonds(self, bonds):
+        self._bonds = bonds
+        self._bond_counts = None
 
     def count_types(self):
         """Count the number of each bead type.
