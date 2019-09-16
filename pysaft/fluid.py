@@ -208,3 +208,65 @@ class PolyatomicHardChain(core.FreeEnergy):
                     raise KeyError('Bead index {} outside range [0,{}]'.format(i, num_types))
                 nhs[i] += n_*N_i
         return HardSphere(self.d),nhs
+
+class AsakuraOosawa(core.FreeEnergy):
+    """Asakura-Oosawa model for a colloid--polymer mixture.
+
+    Args:
+        d (list): Diameters of colloids (0) and polymers (1).
+
+    The colloids are modeled as a hard sphere fluid, while the
+    the polymers are an ideal solution that is excluded from (and
+    does not adsorb onto) the colloids.
+
+    """
+    def __init__(self, d):
+        super().__init__()
+        self.d = d
+
+    @property
+    def d(self):
+        """Diameters."""
+        return self._d
+
+    @d.setter
+    def d(self, d):
+        if len(d) != 2:
+            raise TypeError('Diameters must have exactly 2 components')
+        self._d = np.atleast_1d(d).astype(np.float64)
+
+    def f(self, n):
+        n = np.atleast_1d(n)
+        if len(n) != 2:
+            raise TypeError('Densities must have exactly 2 components')
+
+        # ideal gas of whole mixture
+        fid = IdealGas()(n)
+
+        # excess for colloids
+        hs = HardSphere(self.d[0])
+        fhs = hs(n[0]) - IdealGas()(n[0])
+
+        # excess for polymers
+        lam_ = self.d[1]/self.d[0]
+        A = 3*lam_ + 3*lam_**2 + lam_**3
+        B = 9*lam_**2/2 + 3*lam_**3
+        C = 3*lam_**3
+        eta = n[0]*np.pi*self.d[0]**3/6.
+        gamma = eta/(1.-eta)
+        fao = n[1]*(A*gamma + B*gamma**2 + C*gamma**3 - np.log(1.-eta))
+
+        return fid + fhs + fao
+
+    def G(self, n, i, j):
+        """Radial distribution function.
+
+        Only the cross-term is implemented using the approximation of Santos.
+
+        """
+        if i == j:
+            raise NotImplementedError('Only cross-term is implemented')
+
+        eta = n[0]*np.pi*self.d[0]**3/6.
+        lam_ = self.d[1]/self.d[0]
+        return 1./(1.-eta) + 2.*lam_/(1.+lam_)*((1.-eta/2.)/(1.-eta)**3-1./(1.-eta))
