@@ -3,4 +3,4 @@
 from .core import *
 
 from . import bond
-from . import eos
+from . import fluid

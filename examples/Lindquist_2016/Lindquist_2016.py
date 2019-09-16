@@ -31,7 +31,7 @@ for i,eta in enumerate(etas):
 
     for j,kT in enumerate(kTs):
         # hard sphere + bonding
-        hs = pysaft.eos.HardSphere(d=[1.,1.])
+        hs = pysaft.fluid.HardSphere(d=[1.,1.])
         v = 4.*np.pi*(np.exp(eAB/kT)-1.)*K
         bond = pysaft.bond.ContactBond(num_patch=[6,2], bond_volume=[[0,v],[v,0]], G=hs.G)
         f = hs + bond

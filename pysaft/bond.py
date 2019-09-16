@@ -132,4 +132,8 @@ class ContactBond(BondFreeEnergy):
         self._G = G
 
     def bond_volume(self, n, i, j):
-        return self._bond_volume[i,j]*self._G(n,i,j)
+        # only compute g if bond volume is **identically** zero
+        if self._bond_volume[i,j] != 0:
+            return self._bond_volume[i,j]*self._G(n,i,j)
+        else:
+            return 0.0

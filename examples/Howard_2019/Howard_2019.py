@@ -32,7 +32,7 @@ for i,eta in enumerate(etas):
 
     for j,eb in enumerate(ebs):
         # hard chain + bonding
-        hc = pysaft.eos.HardChain(d=[dc,dp],M=[1,M])
+        hc = pysaft.fluid.HardChain(d=[dc,dp],M=[1,M])
         def G(n,i,j):
             hs,nhs = hc._as_hs(n)
             return hs.G(nhs,i,j)
