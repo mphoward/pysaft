@@ -6,24 +6,25 @@ import numpy as np
 import numdifftools as nd
 
 class FreeEnergy:
-    def __init__(self, terms=[]):
-        self.terms = []
-        # inject self-term into list if this is not the base class
-        if type(self) is not FreeEnergy:
-            self.terms.append(self)
-        # extend the list of terms if specified
-        try:
-            self.terms.extend(terms)
-        except TypeError:
-            self.terms.append(terms)
-
-    def __call__(self, n):
-        return np.sum([x.f(n) for x in self.terms])
+    def __init__(self):
+        pass
 
     def __add__(self, term):
-        if not isinstance(term, FreeEnergy):
+        if isinstance(term, CompositeFreeEnergy):
+            return CompositeFreeEnergy([self] + term.terms)
+        elif isinstance(term, FreeEnergy):
+            return CompositeFreeEnergy([self,term])
+        else:
             raise TypeError('Can only add FreeEnergy terms together')
-        return FreeEnergy(self.terms + term.terms)
+
+    def __call__(self, n):
+        r"""Alias for free-energy density (per kT).
+
+        Args:
+            n (float or list): Number densities of each type.
+
+        """
+        return self.f(n)
 
     def f(self, n):
         r"""Free-energy density (per kT).
@@ -33,7 +34,6 @@ class FreeEnergy:
 
         """
         raise NotImplementedError("Free energy density not implemented.")
-
 
     def z(self, n):
         r"""Compressibility factor.
@@ -61,7 +61,7 @@ class FreeEnergy:
         # nominal basis for holding N constant in differentiation
         V0 = 1.0
         N0 = V0*np.atleast_1d(n).astype(np.float64)
-        dFdV = nd.Derivative(lambda V : V*self(N0/V), step=1.e-5)
+        dFdV = nd.Derivative(lambda V : V*self.f(N0/V), step=1.e-5)
         return -dFdV(V0)/np.sum(n)
 
     def mu(self, n, i):
@@ -83,9 +83,37 @@ class FreeEnergy:
         def _f(x):
             _n = np.copy(n).astype(np.float64)
             _n[i] = x
-            return self(_n)
+            return self.f(_n)
         step = nd.MinStepGenerator(base_step=1.e-7, step_ratio=2, num_steps=4)
         return nd.Derivative(_f, step=step)(n[i])
+
+class CompositeFreeEnergy(FreeEnergy):
+    def __init__(self, terms=[]):
+        super().__init__()
+
+        # keep track of all terms in this composite free energy
+        self.terms = []
+        try:
+            self.terms.extend(terms)
+        except TypeError:
+            self.terms.append(terms)
+
+    def __add__(self, term):
+        if isinstance(term, CompositeFreeEnergy):
+            return CompositeFreeEnergy(self.terms + term.terms)
+        elif isinstance(term, FreeEnergy):
+            return CompositeFreeEnergy(self.terms + [term])
+        else:
+            raise TypeError('Can only add FreeEnergy terms together')
+
+    def f(self, n):
+        return np.sum([term.f(n) for term in self.terms])
+
+    def z(self, n):
+        return np.sum([term.z(n) for term in self.terms])
+
+    def mu(self, n, i):
+        return np.sum([term.mu(n,i) for term in self.terms])
 
 class Polymer:
     """Polymer chain topology.
