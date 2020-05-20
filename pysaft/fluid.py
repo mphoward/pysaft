@@ -207,7 +207,7 @@ class HardChain(core.FreeEnergy):
 
         # chain
         mu_bond = (-(Mi-1.)*hs.lnG(nhs,i,i) +
-                   Mi*np.sum([-n[j]*(self.M[j]-1.)*hs.dlnG(nhs,j,j,i) for i in range(len(n))]))
+                   Mi*np.sum([-n[j]*(self.M[j]-1.)*hs.dlnG(nhs,j,j,i) for j in range(len(n))]))
 
         return mu_hs + mu_bond
 
